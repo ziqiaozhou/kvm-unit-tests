@@ -19,17 +19,23 @@ static int exceptions;
 
 static char st1[] = "abcdefghijklmnop";
 
+#define ITERS 1
+
 static void test_stringio(void)
 {
 	unsigned char r = 0;
+	prepare_m
+	start_m
 	asm volatile("cld \n\t"
 		     "movw %0, %%dx \n\t"
 		     "rep outsb \n\t"
 		     : : "i"((short)TESTDEV_IO_PORT),
 		       "S"(st1), "c"(sizeof(st1) - 1));
 	asm volatile("inb %1, %0\n\t" : "=a"(r) : "i"((short)TESTDEV_IO_PORT));
+	end_m("outsb-up")
 	report(r == st1[sizeof(st1) - 2], "outsb up"); /* last char */
 
+	start_m
 	asm volatile("std \n\t"
 		     "movw %0, %%dx \n\t"
 		     "rep outsb \n\t"
@@ -37,6 +43,8 @@ static void test_stringio(void)
 		       "S"(st1 + sizeof(st1) - 2), "c"(sizeof(st1) - 1));
 	asm volatile("cld \n\t" : : );
 	asm volatile("in %1, %0\n\t" : "=a"(r) : "i"((short)TESTDEV_IO_PORT));
+	end_m("outsb-down")
+
 	report(r == st1[0], "outsb down");
 }
 
@@ -560,14 +568,42 @@ static void test_illegal_lea(void)
 static void test_crosspage_mmio(volatile uint8_t *mem)
 {
 	volatile uint16_t w, *pw;
-
+	prepare_m
 	pw = (volatile uint16_t *)&mem[4095];
 	mem[4095] = 0x99;
 	mem[4096] = 0x77;
+	start_m
 	asm volatile("mov %1, %0" : "=r"(w) : "m"(*pw) : "memory");
+	end_m("cross-page-mmio-read");
+	printf("w = %x, expected 0x7799\n", w);
 	report(w == 0x7799, "cross-page mmio read");
+
+	start_m
 	asm volatile("mov %1, %0" : "=m"(*pw) : "r"((uint16_t)0x88aa));
+	end_m("cross-page-mmio-write");
+	printf("mem[4095] = %x,  mem[4096]= %x, expected 0xaa and 0x88\n", mem[4095], mem[4096]);
 	report(mem[4095] == 0xaa && mem[4096] == 0x88, "cross-page mmio write");
+}
+
+static void test_samepage_mmio(volatile uint8_t *mem)
+{
+	volatile uint16_t w, *pw;
+	prepare_m
+
+	pw = (volatile uint16_t *)&mem[4094];
+	mem[4094] = 0x99;
+	mem[4095] = 0x77;
+	start_m
+	asm volatile("mov %1, %0" : "=r"(w) : "m"(*pw) : "memory");
+	end_m("same-page-mmio-read");
+	printf("w = %x, expected 0x7799\n", w);
+	report(w == 0x7799, "same-page mmio read");
+
+	start_m
+	asm volatile("mov %1, %0" : "=m"(*pw) : "r"((uint16_t)0x88aa));
+	end_m("same-page-mmio-write");
+	printf("mem[4094] = %x,  mem[4095]= %x, expected 0xaa and 0x88\n", mem[4094], mem[4095]);
+	report(mem[4094] == 0xaa && mem[4095] == 0x88, "same-page mmio write");
 }
 
 static void test_string_io_mmio(volatile uint8_t *mem)
@@ -575,10 +611,15 @@ static void test_string_io_mmio(volatile uint8_t *mem)
 	/* Cross MMIO pages.*/
 	volatile uint8_t *mmio = mem + 4032;
 
+	prepare_m
+	start_m
 	asm volatile("outw %%ax, %%dx  \n\t" : : "a"(0x9999), "d"(TESTDEV_IO_PORT));
 
-	asm volatile ("cld; rep insb" : : "d" (TESTDEV_IO_PORT), "D" (mmio), "c" (1024));
+	end_m("string_io_mmio-outw")
 
+	start_m
+	asm volatile ("cld; rep insb" : : "d" (TESTDEV_IO_PORT), "D" (mmio), "c" (1024));
+	end_m("string_io_mmio-insb")
 	report(mmio[1023] == 0x99, "string_io_mmio");
 }
 
@@ -803,13 +844,23 @@ int main(void)
 	install_page((void *)read_cr3(), IORAM_BASE_PHYS, mem + 4096);
 	cross_mem = vmap(virt_to_phys(alloc_pages(2)), 2 * PAGE_SIZE);
 
-	test_mov(mem);
+	test_crosspage_mmio(mem);
+	test_samepage_mmio(mem);
+	test_string_io_mmio(mem);
+	test_stringio();
+
+#ifdef __x86_64__
+	test_emulator_64(mem);
+#endif
+
 	test_simplealu(mem);
 	test_cmps(mem);
 	test_scas(mem);
+
+	test_mov(mem);
 	test_smsw(mem);
 	test_lmsw();
-	test_stringio();
+
 	test_incdecnotneg(mem);
 	test_btc(mem);
 	test_bsfbsr(mem);
@@ -828,14 +879,11 @@ int main(void)
 		test_illegal_lea();
 	}
 
-	test_crosspage_mmio(mem);
 
-	test_string_io_mmio(mem);
+
+
 	test_illegal_movbe();
 	test_mov_pop_ss_code_db();
 
-#ifdef __x86_64__
-	test_emulator_64(mem);
-#endif
 	return report_summary();
 }

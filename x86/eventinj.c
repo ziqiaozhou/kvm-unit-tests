@@ -16,6 +16,8 @@
 #  define R "e"
 #endif
 
+#define ITERS 1
+
 void do_pf_tss(void);
 
 static void apic_self_ipi(u8 v)
@@ -221,7 +223,7 @@ int main(void)
 
 	setup_vm();
 	setup_alt_stack();
-
+	prepare_m
 	handle_irq(32, tirq0);
 	handle_irq(33, tirq1);
 
@@ -230,18 +232,23 @@ int main(void)
 	printf("Try to divide by 0\n");
 	flush_idt_page();
 	flush_stack();
+	start_m
 	asm volatile ("divl %3": "=a"(res)
 		      : "d"(0), "a"(1500), "m"(test_divider));
+	end_m("DE-exception")
 	printf("Result is %d\n", res);
 	report(res == 150, "DE exception");
 
 	/* generate soft exception (BP) that will fault on IDT and stack */
 	test_count = 0;
+
 	handle_exception(3, bp_isr);
 	printf("Try int 3\n");
 	flush_idt_page();
 	flush_stack();
+	start_m
 	asm volatile ("int $3");
+	end_m("BP-exception")
 	printf("After int 3\n");
 	report(test_count == 1, "BP exception");
 
@@ -251,7 +258,9 @@ int main(void)
 	handle_exception(4, of_isr);
 	flush_idt_page();
 	printf("Try into\n");
+	start_m
 	asm volatile ("addb $127, %b0\ninto"::"a"(127));
+	end_m("OF-exception")
 	printf("After into\n");
 	report(test_count == 1, "OF exception");
 
@@ -261,7 +270,9 @@ int main(void)
 	handle_exception(4, of_isr);
 	flush_idt_page();
 	printf("Try into\n");
+	start_m
 	asm volatile ("addb $127, %b0\naddr16 into"::"a"(127));
+	end_m("2-byte-OF-exception")
 	printf("After into\n");
 	report(test_count == 1, "2 byte OF exception");
 #endif
@@ -270,10 +281,12 @@ int main(void)
 	test_count = 0;
 	flush_idt_page();
 	printf("Sending vec 33 to self\n");
+	start_m
 	sti();
 	apic_self_ipi(33);
 	io_delay();
 	cli();
+	end_m("vec-33-exception")
 	printf("After vec 33 to self\n");
 	report(test_count == 1, "vec 33");
 
@@ -291,10 +304,12 @@ int main(void)
 	test_count = 0;
 	flush_idt_page();
 	printf("Sending vec 32 and 33 to self\n");
+	start_m
 	apic_self_ipi(32);
 	apic_self_ipi(33);
 	io_delay();
 	sti_nop_cli();
+	end_m("Vec-32-and-33-to-self")
 	printf("After vec 32 and 33 to self\n");
 	report(test_count == 2, "vec 32/33");
 

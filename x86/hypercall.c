@@ -7,6 +7,8 @@
 #define KVM_HYPERCALL_INTEL ".byte 0x0f,0x01,0xc1"
 #define KVM_HYPERCALL_AMD ".byte 0x0f,0x01,0xd9"
 
+#define ITERS 1000
+
 static inline long kvm_hypercall0_intel(unsigned int nr)
 {
 	long ret;
@@ -54,15 +56,17 @@ int main(int ac, char **av)
 {
 	bool test_vmcall = !no_test_device || is_intel();
 	bool test_vmmcall = !no_test_device || !is_intel();
-
+	prepare_m
 	if (test_vmcall) {
+		start_m
 		kvm_hypercall0_intel(-1u);
-		printf("Hypercall via VMCALL: OK\n");
+		end_m("Hypercall-intel-VMCALL")
 	}
 
 	if (test_vmmcall) {
-		kvm_hypercall0_amd(-1u);
-		printf("Hypercall via VMMCALL: OK\n");
+		start_m
+			kvm_hypercall0_amd(-1u);
+		end_m("Hypercall-amd-VMMCALL")
 	}
 
 #ifdef __x86_64__

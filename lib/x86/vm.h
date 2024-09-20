@@ -7,6 +7,11 @@
 #include "asm/io.h"
 #include "asm/bitops.h"
 
+#define prepare_m u64 start, end;
+#define start_m start = rdtsc(); for (int i= 0; i< ITERS; ++i) {
+
+#define end_m(s) } end = rdtsc(); printf("%s time %ld\n", s, (end - start)/ITERS );
+
 void setup_5level_page_table(void);
 
 struct pte_search {

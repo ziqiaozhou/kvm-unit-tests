@@ -10,6 +10,8 @@
 
 #define MAX_TPR			0xf
 
+#define ITERS 1
+
 static bool is_apic_hw_enabled(void)
 {
 	return rdmsr(MSR_IA32_APICBASE) & APIC_EN;

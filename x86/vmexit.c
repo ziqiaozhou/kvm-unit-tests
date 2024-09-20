@@ -23,11 +23,22 @@ struct test {
 static int nr_cpus;
 static u64 cr4_shadow;
 
+static inline void _cpuid(int eax, int ecx, int *ebx, int *edx) {
+    __asm__ volatile (
+        "cpuid"
+        : "=b" (*ebx), "=d" (*edx)
+        : "a" (eax), "c" (ecx)
+    );
+}
+
 static void cpuid_test(void)
 {
-	asm volatile ("push %%"R "bx; cpuid; pop %%"R "bx"
+	int ebx= 0x8000001f, edx = 0;
+        _cpuid(0x8000001f, 0, &ebx, &edx);
+/*	asm volatile ("push %%"R "bx; cpuid; pop %%"R "bx"
 		      : : : "eax", "ecx", "edx");
-}
+*/
+		      }
 
 static void vmcall(void)
 {
@@ -565,7 +576,7 @@ static bool do_test(struct test *test)
 		}
 		t2 = rdtsc();
 	} while ((t2 - t1) < GOAL);
-	printf("%s %d\n", test->name, (int)((t2 - t1) / iterations));
+	printf("%s time %d\n", test->name, (int)((t2 - t1) / iterations));
 	if (tsc_ipi)
 		printf("  ipi %s %d\n", test->name, (int)(tsc_ipi / iterations));
 	if (tsc_eoi)
@@ -594,6 +605,7 @@ static bool test_wanted(struct test *test, char *wanted[], int nwanted)
 	return false;
 }
 
+#include "hyperv.h"
 int main(int ac, char **av)
 {
 	int i;
@@ -620,7 +632,11 @@ int main(int ac, char **av)
 		printf("pci-testdev at %#x membar %lx iobar %x\n",
 		       pcidev.bdf, membar, pci_test.iobar);
 	}
-
+	printf("register OSID");
+	u64 guestid = (0x8f00ull << 48);
+	wrmsr(HV_X64_MSR_GUEST_OS_ID, guestid);
+	
+	printf("register OSID end\n");
 	for (i = 0; i < ARRAY_SIZE(tests); ++i)
 		if (test_wanted(&tests[i], av + 1, ac - 1))
 			while (do_test(&tests[i])) {}
